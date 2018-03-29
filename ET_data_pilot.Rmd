@@ -1,0 +1,62 @@
+---
+title: "ET data (Freeviewing EEG ET"
+output: html_notebook
+---
+
+# Load packages etc.
+
+```{r}
+library(tidyverse)
+```
+
+# Get files
+
+```{r}
+# speicherort
+pathfile = "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/ET/smi_transformed/"
+#pathfile = "Y:\Freeviewing_EEG_ET\Daten\ET\smi_transformed\"
+
+# liste mit .txt dateien --> samples (file from: idf converter smi)
+list.txt <- dir(path = pathfile, pattern ="Samples.txt", full.names=TRUE)
+
+# Events (file from: smi event detector)
+event.txt <- dir(path = pathfile, pattern ="Events.txt", full.names=TRUE)
+
+# Logfiles (self-made csvs)
+log.list <- dir(path = "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/Logs/", pattern =".csv", full.names=TRUE)
+
+# Alberts example files
+fix_albert <- read_delim("C:/Users/leh83zj/Documents/UniWü/EEG/EEG Lab/BeispielDatanAlbert/Fixations.txt", delim = "\t")
+mes_albert <- read_delim("C:/Users/leh83zj/Documents/UniWü/EEG/EEG Lab/BeispielDatanAlbert/Messages.txt", delim = "\t")
+```
+
+# Samples/"raw" data
+## Function to parse file & read in header (only)
+```{r}
+fpath <- log.list[1]
+# get correct file of VP! extract VP number? Or by date? make list of all files per VP?
+
+logfile <- read_csv(fpath)
+
+# check whether markers match?
+```
+
+
+# Fixations
+```{r}
+# Fixations (file from: preprocessing above)
+fixFiles <- dir(path = pathfile, pattern ="fixs.csv", full.names=TRUE)
+
+# loop through files
+for (fl in fixFiles){
+  
+  # fl <- fixFiles[1]
+  fixs <- read_csv(fl)
+  # loop through trials
+  for (trial in unique(fixs$Trial))
+  
+  
+}
+
+```
+

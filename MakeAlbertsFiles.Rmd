@@ -1,0 +1,164 @@
+---
+title: "MakeAlbertsFiles"
+output: html_notebook
+---
+
+
+# Load packages etc.
+
+```{r}
+library(tidyverse)
+library(stringr)
+library(gridExtra)
+```
+
+# Get files
+
+```{r}
+# speicherort
+pathfile = "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/ET/preprocessed/"
+#pathfile = "Y:\Freeviewing_EEG_ET\Daten\ET\smi_transformed\"
+
+# liste mit .txt dateien --> samples (file from: idf converter smi)
+list.txt <- dir(path = pathfile, pattern ="Samples.txt", full.names=TRUE)
+
+# Events (file from: smi event detector)
+event.txt <- dir(path = pathfile, pattern ="Events.txt", full.names=TRUE)
+
+# Logfiles (self-made csvs)
+log.list <- dir(path = "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/Logs/", pattern =".csv", full.names=TRUE)
+
+# Alberts example files
+fix_albert <- read_delim("C:/Users/leh83zj/Documents/UniWü/EEG/EEG Lab/BeispielDatanAlbert/Fixations.txt", delim = "\t")
+mes_albert <- read_delim("C:/Users/leh83zj/Documents/UniWü/EEG/EEG Lab/BeispielDatanAlbert/Messages.txt", delim = "\t")
+```
+
+
+# Fixations
+```{r}
+# Fixations (file from: preprocessing above)
+fixFiles <- dir(path = pathfile, pattern ="fixs.csv", full.names=TRUE)
+#fl=fixFiles[1]
+
+
+# loop through files
+for (fl in fixFiles){
+  
+  # fl <- fixFiles[1]
+  fixs <- read_csv(fl)
+  # loop through trials
+  #for (trial in unique(fixs$Trial))
+  
+  VPnr <- fl %>% str_split("/") %>% map(~.x[9]) %>% unlist() %>% str_split("_") %>% map(~.x[1]) %>% unlist()
+  
+  # get other filenames of this VP
+  dataFiles <- dir(path = pathfile, pattern = glob2rx(paste0("*", VPnr, "*data.csv")), full.names=TRUE)
+  markerFiles <- dir(path = pathfile, pattern = glob2rx(paste0("*", VPnr, "*markers.csv")), full.names=TRUE)  
+  # dlist <- lapply(dataFiles, read.table, header=T)
+  # res <- reduce(rbind,dlist)
+
+  # loop through files & concatenate?
+  for (flet in dataFiles){
+
+    # dl <- dataFiles[1]
+    et_data <- read_csv(dl)
+    # loop through trials
+    for (trial in unique(et_data$trialNum))
+
+
+  }
+  
+  logFile <- dir(path = "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/Logs/", pattern = glob2rx(paste0("*", VPnr, "*.csv")), full.names=TRUE)
+
+
+# Fixations (file from: preprocessing above)
+
+
+m1 <- read_csv(markerFiles[1])
+
+# get marker times?
+start_pic <- m1[grepl("KEYWORD50",m1$Marker),]
+# sp <- m1 %>% filter(Marker==contains("keyword50"))
+end_pic <- m1[grepl("KEYWORD99",m1$Marker),]
+
+fixs$trialNum <- NA
+for (idx_m in 1:length(start_pic$Marker)){
+  fixs[fixs$Start > start_pic$Time[idx_m] & fixs$Start < end_pic$Time[idx_m], "trialNum"]  <- start_pic$trialNum[idx_m]
+}
+
+
+# add VP info
+fixs <- fixs %>% group_by(trialNum) %>% mutate(
+  RECORDING_SESSION_LABEL = VPnr,
+  TRIAL_LABEL = trialNum %>% as.character() %>% paste("Trial:", .), # Trials need to be fixed, is always 1 now!
+  CURRENT_FIX_START = (Start - start_pic$Time[trialNum])/1000,   # we need the onset of each stimulus?! to subtract... /1000 = nanosec to msec
+  CURRENT_FIX_END =(End - start_pic$Time[trialNum])/1000, 
+  CURRENT_FIX_X = `Location X`, # does this need to be in different unit?
+  CURRENT_FIX_Y = `Location Y`,
+  fixdur = CURRENT_FIX_END - CURRENT_FIX_START) %>%
+  filter(!is.na(trialNum))
+
+## save
+
+}
+
+```
+
+
+# check raw data
+
+```{r}
+
+  dataFiles <- dir(path = pathfile, pattern = glob2rx(paste0("*data.csv")), full.names=TRUE)
+
+for (dl in dataFiles){
+  
+  # fl <- dataFiles[1]
+  et_data <- read_csv(dl)
+  
+  VPfn <- dl %>% str_split("/") %>% map(~.x[9]) %>% unlist() #%>% str_split("_") %>% map(~.x[1:3]) %>% unlist()
+  
+   # tet <-  et_data %>% filter(!is.na(trialNum)) #%>%
+   #  ggplot(tet) +  
+   #    geom_point(aes(x=X1, y=L.Raw.X..px))  +  
+   #    geom_point(aes(x=X1, y=R.Raw.X..px.))  +  
+   #    geom_point(aes(x=X1, y=L.Raw.Y..px.), color="red")  +  
+   #    geom_point(aes(x=X1, y=R.Raw.Y..px.), color="red") + 
+   #    facet_wrap(~trialNum)
+    
+    
+  # loop through trials
+  for (trial in unique(et_data$trialNum)){
+    if (!is.na(trial)){
+      print(trial)
+      
+    tet <- et_data %>% filter(trialNum==trial) #%>%  summarize(smin=min(Time)) %>% 
+    p1 <- ggplot(tet) +  
+          geom_line(aes(x=Time, y=L.POR.X..px.), linetype=2)  +  
+          geom_line(aes(x=Time, y=R.POR.X..px.), color="red", linetype=2)  +  
+          geom_line(aes(x=Time, y=L.POR.Y..px.))  +  
+          geom_line(aes(x=Time, y=R.POR.Y..px.), color="red") +
+          #ylim(400,700) +
+          xlim(min(tet$Time), min(tet$Time) + (11*1000*1000))
+    
+    p2 <- ggplot(tet) + 
+          geom_line(aes(x=L.POR.X..px., y=L.POR.Y..px.))  +  
+          geom_line(aes(x=R.POR.X..px., y=R.POR.Y..px.), color="red") +
+          #ylim(550,600) +
+          #xlim(400,700)
+        
+    png(paste0("//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/ET/rawPlots/", VPfn, "_", trial, ".png"), width = 1000, height = 1000)
+    grid.arrange( p1, p2, ncol=1)
+    dev.off()
+        #ggsave(paste0("//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/ET/rawPlots/", VPfn, "_", trial, ".png"))
+      #readline(prompt="Press [enter] to continue")
+        Sys.sleep(5) 
+  
+    } 
+  }
+  
+  
+}
+
+```
+

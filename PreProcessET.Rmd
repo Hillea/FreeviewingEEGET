@@ -1,0 +1,322 @@
+---
+title: "PreProcessETdata"
+output: html_notebook
+---
+---
+title: "ET data (Freeviewing EEG ET"
+output: html_notebook
+---
+
+# Load packages etc.
+
+```{r}
+library(tidyverse)
+```
+
+# Get files
+
+```{r}
+# speicherort
+pathfile = "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/ET/smi_transformed/"
+#pathfile = "Y:\Freeviewing_EEG_ET\Daten\ET\smi_transformed\"
+
+# liste mit .txt dateien --> samples (file from: idf converter smi)
+list.txt <- dir(path = pathfile, pattern ="Samples.txt", full.names=TRUE)
+
+# Events (file from: smi event detector)
+event.txt <- dir(path = pathfile, pattern ="Events.txt", full.names=TRUE)
+
+# Logfiles (self-made csvs)
+log.list <- dir(path = "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/Logs/", pattern =".csv", full.names=TRUE)
+
+# Alberts example files
+fix_albert <- read_delim("C:/Users/leh83zj/Documents/UniWü/EEG/EEG Lab/BeispielDatanAlbert/Fixations.txt", delim = "\t")
+mes_albert <- read_delim("C:/Users/leh83zj/Documents/UniWü/EEG/EEG Lab/BeispielDatanAlbert/Messages.txt", delim = "\t")
+```
+
+# Samples/"raw" data
+## Function to parse file & read in header (only)
+```{r}
+fpath <- log.list[1]
+# get correct file of VP! extract VP number? Or by date? make list of all files per VP?
+
+logfile <- read_csv(fpath)
+
+# check whether markers match?
+```
+
+
+# Get log files
+
+```{r}
+processFile = function(filepath) {
+  
+  #### header ##############
+  # initialize data frames
+  header <- character()
+  #messages <- character()
+  head_count <- 0
+  dataET <- character()
+  con = file(filepath, "r")
+  while ( TRUE ) {
+    line = readLines(con, n = 1)
+    if ( length(line) == 0 ) {
+      break
+    }
+    #print(line)
+    if (regexpr("#", line)[1]==1){    # if the first character in the row is #
+      head_count <- head_count+1
+      #print(line)
+      is.character(line)
+      header <- rbind(header, line)   # add new row underneath last one
+   #  } else {
+   #  dataET <- rbind(dataET, line)
+    }
+  }
+  
+  #outputlist <- list(header, messages, dataET)  # combine all data in a list for the outpu
+  close(con)
+  #View(header) 
+  
+  ### data #################
+
+    # skippe die ersten 41 Zeilen und lese den Rest ein, dabei werden fehlende Zellen mit NAs gefüllt
+  sample2 <- read.delim(filepath, header = TRUE, sep = "\t", fill=TRUE, row.names = NULL, skip=head_count)
+
+    
+    ###### Preprocessing Data #######
+        # separate data from messages
+    #duplicate 1st column (which stores both messages and data)
+    sample2.new <- cbind(sample2, "L.Raw.X..px.new"=rep(sample2$L.Raw.X..px.))
+    
+    #store in new df
+    mydf <- sample2.new[,c("L.Raw.X..px.","L.Raw.X..px.new")]
+    
+    #finde alle Zeilen mit #
+    #regexpr("#",mydf[,1])==1
+    #
+    mydf[,1] <- sub("#", mydf[,1], replacement = NA)
+    mydf[regexpr("#", mydf[,2])!=1,2] <- NA
+    #head(mydf)
+    
+    #as.numeric/as.character
+    mydf[,1] <- as.numeric(mydf[,1])
+    mydf[,2] <- as.character(mydf[,2])
+    
+    #verbinde sample 2 mit neuen spalten
+    sample2.new <- cbind(mydf,sample2[c(1:3, 5:46)])
+    
+    #change column names
+    names(sample2.new)[names(sample2.new)=="L.Raw.X..px."] <- "L.Raw.X..px"  # number
+    names(sample2.new)[names(sample2.new)=="L.Raw.X..px.new"] <- "Marker"  # character (marker etc)
+    
+    
+    ### FIX MARKERS! ####
+        # make new trial column, depending on markers (i.e. between marker )
+    # markerfile <- sample2.new[!is.na(sample2.new$Marker),]    
+    # datafile <- sample2.new[is.na(sample2.new$Marker),]   
+    
+    idx_start_pic <- which(grepl("KEYWORD50",sample2.new$Marker))
+    idx_end_pic <- which(grepl("KEYWORD99",sample2.new$Marker))
+    
+    if( ((idx_end_pic - idx_start_pic < 2000) || (idx_end_pic - idx_start_pic > 3000))  | diff(idx_start_pic) < 3000 |  diff(idx_end_pic) < 3000) {
+      print(paste0("Something's wrong with the markers in file ", filepath))
+    }
+   
+    
+    sample2.new$trialNum <- NA
+    tn = 1
+    while (tn <= length(idx_start_pic)){
+      sample2.new$trialNum[idx_start_pic[tn]:idx_end_pic[tn]] <- tn
+      
+      tn = tn+1
+    }
+    
+    markerfile <- sample2.new[!is.na(sample2.new$Marker),c("Marker", "Time", "Type", "trialNum")]    
+    datafile <- sample2.new[is.na(sample2.new$Marker),]   
+    
+    
+  return(list(header, sample2.new, markerfile, datafile))
+}
+```
+
+## Read, parse and save files
+This takes a while per file   
+```{r}
+for (fl in list.txt){
+    newfilename <- gsub(" Samples.txt", "",strsplit(fl, "/")[[1]][9]) # statt 7 length...?
+    newpath <- "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/ET/preprocessed/"
+    if(!file.exists(paste0(newpath, newfilename, "_data.csv"))){  # if file exists already -> skip
+  
+      datafiles<- processFile(fl)
+      header <- datafiles[[1]]
+      etdata <- datafiles[[2]]
+      markerfile <- datafiles[[3]]
+      datafile <- datafiles[[4]]
+      
+      
+      ###### save files
+      write.csv(header, file=paste0(newpath, newfilename, "_info.csv"))  # save header
+      write.csv(etdata, file=paste0(newpath, newfilename, "_data.csv"))  # save data 
+      write.csv(markerfile, file=paste0(newpath, newfilename, "_markers.csv"))  # save header
+      write.csv(datafile, file=paste0(newpath, newfilename, "_datanm.csv"))  # save data 
+      print(paste("finished:", fl))
+    }
+}
+```
+
+# Events
+```{r}
+
+
+# somehow find the row with "KEYWORD1" (using readLines?) and skip all rows before
+#eventfile <- read.delim(event.txt[1], header=FALSE, sep ="\t", fill=TRUE, row.names=NULL, skip = 23)
+
+##### Split file in 5 dataframes (fixations, saccades, messages, triggers, blinks) #######
+# Funktion um die Datei Zeile für Zeile einzulesen 
+processEvents = function(filepath) {
+    
+    # initialize data frames
+    fixations <- matrix(nrow = 0, ncol= 13) # I don't know the dim's
+    saccades <- matrix(nrow = 0, ncol= 17)
+    blinks <- matrix(nrow = 0, ncol= 6)
+    messages <- matrix(nrow = 0, ncol= 5)
+    triggers <- matrix(nrow = 0, ncol= 6)
+    
+    con = file(filepath, "r")
+    while ( TRUE ) {
+      line = readLines(con, n = 1)
+      if ( length(line) == 0 ) {
+        break
+      }
+      
+     #print(line)
+      
+      # headers
+      if (regexpr("Table Header", line)[1]!=-1){    # if row contains "Table Header"
+        if (regexpr("Fixations", line)[1]!=-1){
+          line = readLines(con, n = 1)
+          header_fix <- unlist(strsplit(line, "\t"))
+        } else if (regexpr("Saccades", line)[1]!=-1){
+          line = readLines(con, n = 1)
+          header_sac <- unlist(strsplit(line, "\t"))
+        } else if (regexpr("Blinks", line)[1]!=-1){
+          line = readLines(con, n = 1)
+          header_blnk <- unlist(strsplit(line, "\t"))
+        } else if (regexpr("User Events", line)[1]!=-1){
+          line = readLines(con, n = 1)
+          header_msg <- unlist(strsplit(line, "\t"))
+        } else if (regexpr("Trigger Line", line)[1]!=-1){
+          line = readLines(con, n = 1)
+          header_trig <- unlist(strsplit(line, "\t"))
+        }
+        
+      } else if (regexpr("Fixation", line)[1]!=-1){    # if it is NOT a header
+        fixations <- rbind(fixations,  unlist(strsplit(line, "\t")))
+      } else if (regexpr("Saccade", line)[1]!=-1){    # if it is NOT a header
+        saccades <- rbind(saccades,  unlist(strsplit(line, "\t"))) 
+      } else if (regexpr("Blink", line)[1]!=-1){    # if it is NOT a header
+        blinks <- rbind(blinks,  unlist(strsplit(line, "\t")))
+      } else if (regexpr("UserEvent", line)[1]!=-1){    # if it is NOT a header
+        messages <- rbind(messages,  unlist(strsplit(line, "\t")))  
+      } else if (regexpr("TriggerLine", line)[1]!=-1){    # if it is NOT a header
+        triggers <- rbind(triggers,  unlist(strsplit(line, "\t")))
+      }
+      
+    }
+    
+    # TRANSFORM TO DF! 
+    fixations <- as.data.frame(fixations)
+    saccades <- as.data.frame(saccades)
+    blinks <- as.data.frame(blinks)
+    messages <- as.data.frame(messages)
+    triggers <- as.data.frame(triggers)
+    
+    names(fixations) <- header_fix
+    names(saccades) <- header_sac
+    names(blinks) <- header_blnk
+    names(messages) <- header_msg
+    names(triggers) <- header_trig
+    
+    outputlist <- list(fixations, saccades, blinks, messages, triggers)  # combine all data in a list for the outpu
+    
+    close(con)
+    #View(header) 
+    return(outputlist)
+}
+
+```
+
+## Get, parse, save files
+```{r}
+
+for (fl in event.txt){
+  print(fl)
+  newfilename <- gsub(" Events.txt", "",strsplit(fl, "/")[[1]][9]) # statt 7 length...?
+  newpath <- "//132.187.156.211/Lea/Freeviewing_EEG_ET/Daten/ET/preprocessed/"
+  if(!file.exists(paste0(newpath, newfilename, "_fixs.csv"))){  # if file exists already -> skip
+    
+    events <- processEvents(fl)
+    
+   
+    
+   # split output in 5 dataframes
+    fixs <- events[[1]]
+    sacs <- events[[2]]
+    blinks <- events[[3]]
+    msgs <- events[[4]]
+    trigs <- events[[5]]
+    
+    
+    ###### save files
+    write.csv(fixs, file=paste0(newpath, newfilename, "_fixs.csv"))  # save fixations
+    write.csv(sacs, file=paste0(newpath, newfilename, "_sacs.csv"))  # save saccades 
+    write.csv(blinks, file=paste0(newpath, newfilename, "_blnk.csv"))  # save fixations
+    write.csv(msgs, file=paste0(newpath, newfilename, "_msg.csv"))  # save saccades 
+    write.csv(trigs, file=paste0(newpath, newfilename, "_trg.csv"))  # save fixations
+
+    print(paste("finished:", fl))
+  #clearvars 
+  }
+}
+
+```
+
+
+# Plot data
+## Click through trials per person (and animate "movie" of gaze?)
+```{r}
+# Fixations (file from: preprocessing above)
+dataFiles <- dir(path = pathfile, pattern ="data.csv", full.names=TRUE)
+
+# loop through files
+for (fl in dataFiles){
+  
+  # fl <- dataFiles[1]
+  et_data <- read_csv(fl)
+  # loop through trials
+  for (trial in unique(et_data$trialNum))
+  
+  
+}
+
+```
+
+# Fixations
+```{r}
+# Fixations (file from: preprocessing above)
+fixFiles <- dir(path = pathfile, pattern ="fixs.csv", full.names=TRUE)
+
+# loop through files
+for (fl in fixFiles){
+  
+  # fl <- fixFiles[1]
+  fixs <- read_csv(fl)
+  # loop through trials
+  for (trial in unique(fixs$Trial))
+  
+  
+}
+
+```
+
